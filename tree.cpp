@@ -85,6 +85,51 @@ float negaMax(Node *node, int depth, int origDepth)
     return bestScore;
 }
 
+
+
+int gInteriorNodesVisited = 0;
+int gLeafNodesVisited = 0;
+
+float alphabeta(Node *node, int depth, int origDepth, float alpha, float beta)
+{
+    if (depth == 0)
+    {
+        gLeafNodesVisited++;
+
+        // eval for even depths, -eval for odd depths
+        if (origDepth % 2 == 0)
+            return node->nodeVal;
+        else
+            return -node->nodeVal;
+    }
+
+    gInteriorNodesVisited++;
+
+    // choose the best child
+    int bestChild = 0;
+
+    for (int i = 0; i < node->nChildren; i++)
+    {
+        float curScore = -alphabeta(&node->children[i], depth - 1, origDepth, -beta, -alpha);
+        if (curScore >= beta)
+        {
+            return beta;
+        }
+
+        if (curScore > alpha)
+        {
+            alpha = curScore;
+            bestChild = i;
+        }
+    }
+
+    node->nodeVal = alpha;
+    node->bestChild = bestChild;
+
+    return alpha;
+
+}
+
 int main()
 {
     int depth = 5;
@@ -96,10 +141,17 @@ int main()
     genTree(&root, depth);
     printf("random tree generated, total nodes: %d, leaf nodes: %d\n", gTotalNodes, gLeafNodes);
 
+    float bestVal = 0;
     // search the best move using min-max search
     printf("searching the tree using min-max\n");
-    float bestVal = negaMax(&root, depth, depth);
+    bestVal = negaMax(&root, depth, depth);
     printf ("best move %d, score: %f\n", root.bestChild, root.nodeVal);
+
+    // search the best move using alpha-beta search
+    printf("searching the tree using alpha-beta\n");
+    bestVal = alphabeta(&root, depth, depth, -INF, INF);
+    printf ("best move %d, score: %f\nnodes visited (leaves/interior/total): %d/%d/%d\n", 
+            root.bestChild, root.nodeVal, gLeafNodesVisited, gInteriorNodesVisited, gLeafNodesVisited + gInteriorNodesVisited);
 
     return 0;
 }
