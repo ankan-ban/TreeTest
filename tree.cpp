@@ -4,6 +4,22 @@
 #include <stdlib.h>    
 #include <math.h>
 
+
+// for timing CPU code : start
+#include <windows.h>
+double gTime;
+LARGE_INTEGER freq;
+#define START_TIMER { \
+    LARGE_INTEGER count1, count2; \
+    QueryPerformanceFrequency (&freq);  \
+    QueryPerformanceCounter(&count1);
+
+#define STOP_TIMER \
+    QueryPerformanceCounter(&count2); \
+    gTime = ((double)(count2.QuadPart-count1.QuadPart)*1000.0)/freq.QuadPart; \
+    }
+// for timing CPU code : end
+
 #define MAX_CHILDREN 64
 #define INF 10000
 
@@ -134,24 +150,33 @@ int main()
 {
     int depth = 5;
 
-
+    //srand(0);
     // generate a random tree
     printf ("generating random tree of depth %d\n", depth);
     Node root = {0};
+    START_TIMER
     genTree(&root, depth);
-    printf("random tree generated, total nodes: %d, leaf nodes: %d\n", gTotalNodes, gLeafNodes);
+    STOP_TIMER
+    printf("random tree generated, total nodes: %d, leaf nodes: %d, time: %g ms\n", gTotalNodes, gLeafNodes, gTime);
+
+
 
     float bestVal = 0;
     // search the best move using min-max search
     printf("searching the tree using min-max\n");
+    START_TIMER
     bestVal = negaMax(&root, depth, depth);
-    printf ("best move %d, score: %f\n", root.bestChild, root.nodeVal);
+    STOP_TIMER
+    printf ("best move %d, score: %f, time: %g\n", root.bestChild, root.nodeVal, gTime);
 
     // search the best move using alpha-beta search
     printf("searching the tree using alpha-beta\n");
+    START_TIMER
     bestVal = alphabeta(&root, depth, depth, -INF, INF);
+    STOP_TIMER
     printf ("best move %d, score: %f\nnodes visited (leaves/interior/total): %d/%d/%d\n", 
             root.bestChild, root.nodeVal, gLeafNodesVisited, gInteriorNodesVisited, gLeafNodesVisited + gInteriorNodesVisited);
+    printf("time taken: %g\n", gTime);
 
     return 0;
 }
