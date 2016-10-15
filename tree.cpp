@@ -4,6 +4,7 @@
 #include <stdlib.h>    
 #include <math.h>
 #include <time.h>
+#include <assert.h>
 
 // for timing CPU code : start
 #include <windows.h>
@@ -215,6 +216,7 @@ float exploreTree(Node *node, int depth)
                             curNode->nodeType = CUT_NODE;
                         fullNextFrontier[index++] = curNode;
                     }
+                    fullCurrentFrontier[j]->nChildsExplored = fullCurrentFrontier[j]->nChildren;
                     break;
                 case ALL_NODE:
                     for (int k = 0; k < fullCurrentFrontier[j]->nChildren; k++)
@@ -223,6 +225,7 @@ float exploreTree(Node *node, int depth)
                         curNode->nodeType = CUT_NODE;   // child of ALL node is cut node
                         fullNextFrontier[index++] = curNode;
                     }
+                    fullCurrentFrontier[j]->nChildsExplored = fullCurrentFrontier[j]->nChildren;
                     break;
                 case CUT_NODE:
                     {
@@ -280,48 +283,63 @@ float exploreTree(Node *node, int depth)
 
     float *minScan = (float *) malloc (sizeof(float) * nCurr);
     float *maxScan = (float *) malloc (sizeof(float) * nCurr);
+    bool *ignored = (bool *)malloc(sizeof(bool) * nCurr);
+    memset(ignored, 0, sizeof(bool) * nCurr);
 
     float curMin, curMax;
     curMin = curMax = fullCurrentFrontier[0]->nodeVal;  // init. with value of PV node
 
     int nRejected = 0;
     int nExpnded = 0;
-    for (int i=1;i<nCurr;i++)
+
+    do
     {
-        minScan[i] = curMin;
-        maxScan[i] = curMax;
-
-        // this node was expected to be less than the PV node value
-        if (expectedMore[i] == false)
+        for (int i = 1; i < nCurr; i++)
         {
-            if (fullCurrentFrontier[i]->nodeVal <= curMin)
+            // all nodes that are explored here must be ALL nodes
+            assert(fullCurrentFrontier[i]->nodeType == ALL_NODE);
+
+            if (ignored[i])
+                continue;
+
+            minScan[i] = curMin;
+            maxScan[i] = curMax;
+
+            // this node was expected to be less than the PV node value
+            if (expectedMore[i] == false)
             {
-                // reject this branch (i.e, no need to evaluate any more siblings)
-                nRejected++;
+                if (fullCurrentFrontier[i]->nodeVal <= curMin)
+                {
+                    // reject this branch (i.e, no need to evaluate any more siblings)
+                    nRejected++;
+                    ignored[i] = true;
+                }
+                if (fullCurrentFrontier[i]->nodeVal > curMax)
+                {
+                    curMax = fullCurrentFrontier[i]->nodeVal;
+                    // need to evaluate more siblings of this node
+                    
+                    nExpnded++;
+                }
             }
-            if (fullCurrentFrontier[i]->nodeVal > curMax)
+            else //if (expectedMore[i])
             {
-                curMax = fullCurrentFrontier[i]->nodeVal;
-                // need to evaluate more siblings of this node
-                nExpnded++;
+                if (fullCurrentFrontier[i]->nodeVal >= curMax)
+                {
+                    // reject this branch (i.e, no need to evaluate any more siblings of this node)
+                    nRejected++;
+                    ignored[i] = true;
+                }
+                if (fullCurrentFrontier[i]->nodeVal < curMin)
+                {
+                    curMin = fullCurrentFrontier[i]->nodeVal;
+                    // need to evaluate more siblings of this node
+                    nExpnded++;
+                }
             }
         }
-        else //if (expectedMore[i])
-        {
-            if (fullCurrentFrontier[i]->nodeVal >= curMax)
-            {
-                // reject this branch (i.e, no need to evaluate any more siblings of this node)
-                nRejected++;
-            }
-            if (fullCurrentFrontier[i]->nodeVal < curMin)
-            {
-                curMin = fullCurrentFrontier[i]->nodeVal;
-                // need to evaluate more siblings of this node
-                nExpnded++;
-            }
-        }
-    }
 
+    } while (nExpnded);
 
     // how to expand siblings of a node depends on the depth of the node
     // if it's a leaf, we can just generate the next sibling and be done with it.
@@ -564,19 +582,20 @@ int main()
             root.bestChild, root.nodeVal, gLeafNodesVisited, gInteriorNodesVisited, gLeafNodesVisited + gInteriorNodesVisited);
     printf("time taken: %g\n", gTime);
 
-    /*
+    
     START_TIMER
     exploreTree(&root, depth);
     STOP_TIMER
     printf("time taken: %g\n", gTime);    
-    */
+    
 
     float val;
     START_TIMER
     val = SSS_star(&root, depth);
     STOP_TIMER
-        printf("SSS* best node: %d, score: %f, nodes explored: %d, time taken: %g\n", root.bestChild, val, g_sssNodes, gTime);
+    printf("SSS* best node: %d, score: %f, nodes explored: %d, time taken: %g\n", root.bestChild, val, g_sssNodes, gTime);
 
+    getchar();
 
     return 0;
 }
