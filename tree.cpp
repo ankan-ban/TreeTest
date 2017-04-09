@@ -22,7 +22,7 @@ LARGE_INTEGER freq;
 // for timing CPU code : end
 
 //#define MAX_CHILDREN 40
-#define MAX_CHILDREN 10
+#define MAX_CHILDREN 30
 #define INF 10000.0f
 const int g_depth = 6;
 
@@ -52,6 +52,17 @@ struct Node
 
 int gTotalNodes;
 int gLeafNodes;
+
+void freeTree(Node *root)
+{
+    if (!root->children)
+        return;
+
+    for (int i = 0; i < root->nChildren;i++)
+        freeTree(&root->children[i]);
+
+    free(root->children);
+}
 
 void genTree(Node *root, int depth)
 {
@@ -1092,7 +1103,7 @@ int main2()
     srand(randSeed);
     // 3, and 4 are good. 6,7,8 are very good
     // 10 is excellent
-    //srand(10);
+    srand(10);
     // generate a random tree
     printf ("generating random tree of depth %d\n", g_depth);
     Node root = {0};
@@ -1133,6 +1144,7 @@ int main2()
     STOP_TIMER
     printf("SSS* best node: %d, score: %f, nodes explored: %d, time taken: %g\n", root.bestChild, val, g_sssNodes, gTime);
 
+    freeTree(&root);
     getchar();
 
     return 0;
@@ -1141,9 +1153,9 @@ int main2()
 
 int main()
 {
-    for (int i = 0; i < 100000; i++)
+    for (int i = 0; i < 100; i++)
     {
-        int randSeed = i;
+        int randSeed = i /*+ time(NULL)*/;
 
         gTotalNodes = 0;
         gLeafNodes = 0;
@@ -1159,7 +1171,7 @@ int main()
         START_TIMER
             genTree(&root, g_depth);
         STOP_TIMER
-            printf("random tree generated, total nodes: %d, leaf nodes: %d, time: %g ms\n", gTotalNodes, gLeafNodes, gTime);
+        printf("random tree generated, total nodes: %d, leaf nodes: %d, time: %g ms\n", gTotalNodes, gLeafNodes, gTime);
 
         float bestValAB = 0;
         float bestValET = 0;
@@ -1176,13 +1188,15 @@ int main()
         START_TIMER
             bestValET = exploreTree(&root, g_depth);
         STOP_TIMER
-        printf("time taken: %g\n", gTime);
+        printf("time taken: %g\n\n\n\n", gTime);
 
         if (bestValET != bestValAB)
         {
             printf("\n*Mismatch found!*\n");
             getchar();
         }
+
+        freeTree(&root);
     }
     getchar();
 
