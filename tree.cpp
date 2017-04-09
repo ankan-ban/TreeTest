@@ -22,7 +22,7 @@ LARGE_INTEGER freq;
 // for timing CPU code : end
 
 //#define MAX_CHILDREN 40
-#define MAX_CHILDREN 3
+#define MAX_CHILDREN 10
 #define INF 10000.0f
 const int g_depth = 6;
 
@@ -46,7 +46,6 @@ struct Node
     unsigned char nChildsExplored; // num of chlidren explored (only valid for CUT nodes)
 
     bool          isMaxNode;            // totally redundant, kept here for simplicity.
-    bool          ignored;              // again kind of redundant (can track this elsewhere)
     int           frontierOffset;       // offset of first leaf in the frontier of the subtree whose root is this node
     int           numChildrenAtFrontier;// no of children of the subtree at frontier
 };
@@ -58,7 +57,6 @@ void genTree(Node *root, int depth)
 {
     gTotalNodes++;
 
-    root->ignored = false;
     root->frontierOffset = -1;
     root->numChildrenAtFrontier = 0;
 
@@ -200,39 +198,6 @@ bool isBetter(bool isMaxNode, float val1, float val2)
         return true;
 
     return false;
-}
-
-// initialize node values (partial/best till now values) based on nodes that have been explored
-float initNodeVals(Node *node)
-{
-    if (node->nChildsExplored == 0)
-    {
-        // leaf node
-        assert(node->children == NULL);
-        assert(fabs(node->nodeVal) != INF);
-        return node->nodeVal;
-    }
-
-    float nodeVal = initNodeVals(&node->children[0]);
-    node->best = &node->children[0];
-    for (int i = 1; i < node->nChildsExplored; i++)
-    {
-        float childVal = initNodeVals(&node->children[i]);
-
-        // second last level (last is leafs so the values are accurately known)
-        // otherwise, although we might have explored more nodes, just put the value of first child for init here
-        if (node->children[0].children == NULL)
-        {
-            if (isBetter(node->isMaxNode, childVal, nodeVal))
-            {
-                nodeVal = childVal;
-                node->best = &node->children[i];
-            }
-        }
-    }
-    node->nodeVal = nodeVal;
-
-    return nodeVal;
 }
 
 int propogateFrontierOffsets(Node *node, int *childrenAtFrontier)
@@ -417,9 +382,6 @@ float exploreSubTree(Node *node, float cutVal)
             break;
     }
 
-    // init node vals (with whatever we have explore till this point)
-    initNodeVals(node);
-
     int count;
     int start = propogateFrontierOffsets(node, &count);
     assert(start == 0 && count == nCurr);
@@ -442,48 +404,7 @@ float exploreSubTree(Node *node, float cutVal)
         nRejected = 0;
         nExpnded = 0;
 
-        // this termination condition is wrong, when there are many cut nodes at last level of subtree (only first cut node is checked)
-        // let'have only nExplored == 0 as termination condition
-#if 0
-        // figure out the best node/val at the start of the iteration
-        Node *bestNow = node;
-        while (bestNow->children)
-        {
-            bestNow = bestNow->best;
-        }
-
-        computedVal = bestNow->nodeVal;
-
-
-        if ((isMaxLevel  && computedVal < cutVal) ||
-            (!isMaxLevel && computedVal > cutVal))
-        {
-            // break out of this loop, we are done
-            break;
-        }
-#endif
-
-        // TODO: this is not a valid exit condition! Add proper exit condition.
-        // Ankan - BUG BUG!!
-#if 0
-        if (node->nChildsExplored == node->nChildren)
-        {
-            break;
-        }
-#endif
-
         curMin = curMax = cutVal;
-
-#if 0
-        // ignore all nodes to the left of bestNow
-        for (int i = 0; i < nCurr; i++)
-        {
-            if (currentNodeVals[i] == bestNow->nodeVal)
-                break;
-
-            ignored[i] = true;
-        }
-#endif
 
         for (int i = 0; i < nCurr; i++)
         {
@@ -491,7 +412,7 @@ float exploreSubTree(Node *node, float cutVal)
             assert(fullCurrentFrontier[i]->nodeType = ALL_NODE ||
                 fullCurrentFrontier[i]->nChildsExplored == fullCurrentFrontier[i]->nChildren);
 
-            if (ignored[i] || fullCurrentFrontier[i]->ignored)
+            if (ignored[i])
                 continue;
 
             minScan[i] = curMin;
@@ -534,32 +455,11 @@ float exploreSubTree(Node *node, float cutVal)
             }
         }
 
-        // do something with expanded nodes?
+        // the loop is done when nothing gets expanded anymore
     } while (nExpnded);
-
-#if 0
-    // Ankan - TODO: there is a bug here! full subtree isn't evaluated?
-    // check second iteration (of main exploreTree loop)
-    Node *bestNow = fullCurrentFrontier[0];
-    while (bestNow->parent->best != bestNow)
-    {
-        bestNow = bestNow->parent;
-    }
-#endif
 
     return isMaxLevel ? max(cutVal, computedVal)
                       : min(cutVal, computedVal);
-}
-
-
-void markTreeIgnored(Node *root)
-{
-    if (root == NULL)
-        return;
-
-    root->ignored = true;
-    for (int i = 0; i < root->nChildsExplored; i++)
-        markTreeIgnored(&root->children[i]);
 }
 
 // returns true if the node was actually expanded (sibling evaluated)
@@ -597,7 +497,6 @@ bool expandNode(Node **fullCurrentFrontier, float *currentNodeVals, int i, float
         thisNode = currentParent;
         currentParent = currentParent->parent;
 
-        // Ankan - TODO: recently added! check if this is always correct!
         if (currentParent->nodeType == ALL_NODE)
         {
             //if (isBetter(currentParent, currentNodeVals[i]))
@@ -607,13 +506,18 @@ bool expandNode(Node **fullCurrentFrontier, float *currentNodeVals, int i, float
             //  ii) there is no 'open' child towards the right of current node
             //     - open CHILD are the nodes that have possibility of being better than the current node
             bool isBest = true;
-            // TODO: Check only nodes towards the right. No need to check all nodes of parent
+            // bool onRight = false;
 
-            // currentParent->children[n].nodeVal SHOULD be always set
+            // TODO: Check only nodes towards the right. No need to check all nodes of parent
+            // ANKAN - BUG! TODO!!! just checking nodes towards right doesn't work. Figure out why?
+
             for (int n = 0; n < currentParent->nChildren; n++)
             {
                 if ((&currentParent->children[n]) != thisNode)
                 {
+                    //if (!onRight)
+                    //    continue;
+
                     for (int k = 0; k < currentParent->children[n].numChildrenAtFrontier; k++)
                     {
                         int frontierOffset = currentParent->children[n].frontierOffset + k;
@@ -631,30 +535,11 @@ bool expandNode(Node **fullCurrentFrontier, float *currentNodeVals, int i, float
                     {
                         break;
                     }
-                    //else
-                    //{
-                    //    markTreeIgnored(&currentParent->children[n]);
-                    //}
-#if 0
-                    // Ankan TODO: proper solution: instead of checking currentParent->children[n].nodeVal
-                    // check all frontier nodes that belongs to the subtree whose root is currentParent->children[n]
-                    if (isBetter(currentParent->isMaxNode, currentParent->children[n].nodeVal, currentNodeVals[i]))
-                    {
-                        isBest = false;
-                        break;
-                    }
-                    else
-                    {
-                        // need to ignore the entire subtree pointed by 'currentParent->children[n]'
-                        // otherwise it will cause problem when it's explored again :-/
-
-                        // ANKAN TODO: VERY IMP: BUG! 
-                        // can't ignore the subtree based on 'currentParent->children[n].nodeVal' as it's still possible to find
-                        // a better node which haven't been explored yet!
-                        markTreeIgnored(&currentParent->children[n]);
-                    }
-#endif
                 }
+                //else
+                //{
+                //    onRight = true;
+                //}
             }
 
 
@@ -919,9 +804,6 @@ float exploreTree(Node *node, int depth)
     int nRejected = 0;
     int nExpnded = 0;
 
-    // init node vals (with whatever we have explore till this point)
-    initNodeVals(node);
-
     // propogate frontier offsets from leafs up the tree
     int count;
     int start = propogateFrontierOffsets(node, &count);
@@ -932,41 +814,12 @@ float exploreTree(Node *node, int depth)
         nRejected = 0;
         nExpnded = 0;
 
-#if 0
-        // figure out the best node/val at the start of the iteration
-        Node *bestNow = node;
-        while (bestNow->children)
-        {
-            bestNow = bestNow->best;
-        }
-#endif
-
-        // old buggy logic
-#if 0
-        Node *bestNow = fullCurrentFrontier[0];
-        while (bestNow->parent->best != bestNow)
-        {
-            bestNow = bestNow->parent;
-        }
-#endif 
 
         // ignore all nodes to the left of bestNow
         for (int i = 0; i < nCurr; i++)
         {
             ignored[i] = true;
 
-            // Ankan - check on value is unreliable (if two nodes have same values)
-#if 0
-            if (currentNodeVals[i] == bestNow->nodeVal)
-                break;
-#endif
-
-            // TODO!!! Bug - however check on the node is even worse (doesn't work when the fullCurrentFrontier doesn't contain the leaf node).
-            // fullCurrentFrontier[i] can have any random node (internal or leaf, or second last to leaf... anything!)
-            //if (fullCurrentFrontier[i] == bestNow)
-            //    break;
-
-#if 1
             // Unnecessary and expensive. TODO: figure out better way
             bool found = false;
             Node *bestNow = node;
@@ -984,12 +837,7 @@ float exploreTree(Node *node, int depth)
                 curMin = curMax = bestNow->nodeVal;
                 break;
             }
-#endif
         }
-
-#if 0
-        curMin = curMax = bestNow->nodeVal;
-#endif
 
         for (int i = 1; i < nCurr; i++)
         {
@@ -997,7 +845,7 @@ float exploreTree(Node *node, int depth)
             assert(fullCurrentFrontier[i]->nodeType = ALL_NODE ||
                    fullCurrentFrontier[i]->nChildsExplored == fullCurrentFrontier[i]->nChildren);
 
-            if (ignored[i] /*|| fullCurrentFrontier[i]->ignored*/)
+            if (ignored[i])
                 continue;
 
             minScan[i] = curMin;
@@ -1040,27 +888,8 @@ float exploreTree(Node *node, int depth)
 
     } while (nExpnded);
 
-    // how to expand siblings of a node depends on the depth of the node
-    // if it's a leaf, we can just generate the next sibling and be done with it.
-    // ... at least unless is the last sibling.. if it's the last sibling.. need to generate next sibling at the
-    // next parent cut node (next sibling of grandparent)
-
-    // if expanding sibling of a non-leaf node, always expand the next sibling as CUT node... comparing it with
-    // the current best in subtree
-
-    // Ankan: there is a bug in propogating the value of best node to the root of the tree!
-    // * fixed!
-#if 0
-    Node *bestNow = node;
-    while (bestNow->children)
-    {
-        bestNow = bestNow->best;
-    }
-#endif
-
     printf("\nExplore Tree found value: %f\n", node->nodeVal);
-    //printf("\nTotal nodes: %d\n", nCurr);
-    //printf("\nAfter scan, rejected: %d, to be expanded: %d\n", nRejected, nExpnded);
+
 
     free (fullCurrentFrontier);
     return node->nodeVal;
