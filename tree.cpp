@@ -22,9 +22,9 @@ LARGE_INTEGER freq;
 // for timing CPU code : end
 
 //#define MAX_CHILDREN 40
-#define MAX_CHILDREN 30
+#define MAX_CHILDREN 12
 #define INF 10000.0f
-const int g_depth = 6;
+const int g_depth = 10;
 
 #define MAX_DEPTH 20
 
@@ -240,6 +240,8 @@ int propogateFrontierOffsets(Node *node, int *childrenAtFrontier)
     return first;
 }
 
+int exploreSubTreeCount = 0;
+
 bool expandNode(Node **fullCurrentFrontier, float *currentNodeVals, int i, float curBest, Node *subTreeRoot, bool *ignored);
 
 // starts exploring a node as if it's a CUT node with cutVal as the value to check against
@@ -247,6 +249,8 @@ bool expandNode(Node **fullCurrentFrontier, float *currentNodeVals, int i, float
 // works only on CUT and ALL nodes, no node is marked as PV node by this function
 float exploreSubTree(Node *node, float cutVal)
 {
+    exploreSubTreeCount++;
+
     // isMaxLevel is true if node's *parent* is a MAX level
     bool isMaxLevel = !node->isMaxNode;
     if (node->children == NULL)
@@ -637,6 +641,8 @@ bool expandNode(Node **fullCurrentFrontier, float *currentNodeVals, int i, float
 // a non-recursive and hopefully somewhat parallel algorithm based on alpha beta
 float exploreTree(Node *node, int depth)
 {
+    exploreSubTreeCount = 0;
+
     // the frontier / current list of nodes that need to be explored / nodes at the current level
     // TODO: many of these lists are probably redundant - get rid of some later
     Node *currentPVNode   = NULL;       Node *nextPVNode   = NULL;
@@ -676,14 +682,6 @@ float exploreTree(Node *node, int depth)
                     childsToExplore = 1;
                     break;
             }
-
-            /*
-            if (i == (depth - 2))
-            {
-                fullCurrentFrontier[j]->frontierOffset = nNext;
-                fullCurrentFrontier[j]->numChildrenAtFrontier = childsToExplore;
-            }
-            */
 
             nNext += childsToExplore;
         }
@@ -820,11 +818,14 @@ float exploreTree(Node *node, int depth)
     int start = propogateFrontierOffsets(node, &count);
     assert(start == 0 && count == nCurr);
 
+    int iterations = 0;
+
     do
     {
+        iterations++;
+
         nRejected = 0;
         nExpnded = 0;
-
 
         // ignore all nodes to the left of bestNow
         for (int i = 0; i < nCurr; i++)
@@ -899,7 +900,9 @@ float exploreTree(Node *node, int depth)
 
     } while (nExpnded);
 
+    printf("\nFrontier Nodes: %d, main loop iterations: %d, explore subtree count: %d", nCurr, iterations, exploreSubTreeCount);
     printf("\nExplore Tree found value: %f\n", node->nodeVal);
+
 
 
     free (fullCurrentFrontier);
@@ -1131,7 +1134,6 @@ int main2()
             root.bestChild, root.nodeVal, gLeafNodesVisited, gInteriorNodesVisited, gLeafNodesVisited + gInteriorNodesVisited);
     printf("time taken: %g\n", gTime);
 
-    
     START_TIMER
     exploreTree(&root, g_depth);
     STOP_TIMER
@@ -1153,9 +1155,9 @@ int main2()
 
 int main()
 {
-    for (int i = 0; i < 100; i++)
+    for (int i = 0; i < 1000; i++)
     {
-        int randSeed = i /*+ time(NULL)*/;
+        int randSeed = i + time(NULL);
 
         gTotalNodes = 0;
         gLeafNodes = 0;
@@ -1197,6 +1199,7 @@ int main()
         }
 
         freeTree(&root);
+        //getchar();
     }
     getchar();
 
